@@ -5,7 +5,6 @@ from transformers import Trainer, EvalPrediction
 from transformers.trainer_utils import PredictionOutput
 from typing import Tuple
 from tqdm.auto import tqdm
-import torch
 
 QA_MAX_ANSWER_LENGTH = 30
 
@@ -112,8 +111,6 @@ def prepare_train_dataset_qa(examples, tokenizer, max_seq_length=None):
                 while offsets[token_end_index][1] >= end_char:
                     token_end_index -= 1
                 tokenized_examples["end_positions"].append(token_end_index + 1)
-        
-        tokenized_examples["no_answer_probability"] = [0.0] * len(tokenized_examples["start_positions"])
 
     return tokenized_examples
 
@@ -222,9 +219,6 @@ def postprocess_qa_predictions(examples,
                             end_index - start_index + 1 > QA_MAX_ANSWER_LENGTH:
                         continue
 
-                    start_probs = torch.nn.functional.softmax(torch.tensor(start_logits), dim=-1)
-                    end_probs = torch.nn.functional.softmax(torch.tensor(end_logits), dim=-1)
-
                     prelim_predictions.append(
                         {
                             "offsets": (offset_mapping[start_index][0],
@@ -233,7 +227,6 @@ def postprocess_qa_predictions(examples,
                                      end_logits[end_index],
                             "start_logit": start_logits[start_index],
                             "end_logit": end_logits[end_index],
-                            "no_answer_probability": (start_probs[0] * end_probs[0]).item()
                         }
                     )
 
@@ -252,7 +245,7 @@ def postprocess_qa_predictions(examples,
         if len(predictions) == 0 or (
                 len(predictions) == 1 and predictions[0]["text"] == ""):
             predictions.insert(0, {"text": "empty", "start_logit": 0.0,
-                                   "end_logit": 0.0, "score": 0.0, "no_answer_probability": 0.0})
+                                   "end_logit": 0.0, "score": 0.0})
 
         all_predictions[example["id"]] = predictions[0]["text"]
     return all_predictions
@@ -273,9 +266,6 @@ class QuestionAnsweringTrainer(Trainer):
         eval_dataset = self.eval_dataset if eval_dataset is None else eval_dataset
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
         eval_examples = self.eval_examples if eval_examples is None else eval_examples
-
-        print("eval_dataset: ", eval_dataset)
-        print("eval_examples: ", eval_examples)
 
         # Temporarily disable metric computation, we will do it in the loop here.
         compute_metrics = self.compute_metrics
